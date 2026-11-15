@@ -134,17 +134,35 @@ if st.button("Analyze Threat", type="primary"):
             # 3. Email NLP Score
             nlp_res = analyze_email_social_engineering(email_body)
 
-            # 4. Hybrid AI Score
+            # 4. Base AI Score
             if email_body.strip():
-                hybrid_score = (0.4 * p_ml) + (0.4 * p_dl) + (0.2 * nlp_res["score"])
+                ai_score = (0.4 * p_ml) + (0.4 * p_dl) + (0.2 * nlp_res["score"])
             else:
-                hybrid_score = (0.5 * p_ml) + (0.5 * p_dl)
+                ai_score = (0.5 * p_ml) + (0.5 * p_dl)
 
             # 5. Live CyberOps IoCs (WHOIS & SSL)
             live_iocs = get_live_cyberops_iocs(url_clean)
 
             # 6. VirusTotal Check
             vt_res = query_virustotal(url_clean, vt_api_key)
+
+            # 7. CyberOps Trust Calibration (Reduces False Positives on Established Domains)
+            hybrid_score = ai_score
+            age = live_iocs["domain_age_days"]
+            ssl_ok = live_iocs["ssl_valid"]
+            calibrated_note = ""
+
+            if age >= 1825 and ssl_ok:  # Established domain (> 5 years) with valid SSL
+                hybrid_score = ai_score * 0.25
+                calibrated_note = "CyberOps Trust Calibration applied: Established domain (>5 years) + Valid SSL reduced false-positive lexical risk."
+            elif age >= 365 and ssl_ok:  # Mature domain (> 1 year) with valid SSL
+                hybrid_score = ai_score * 0.50
+                calibrated_note = "CyberOps Trust Calibration applied: Mature domain (>1 year) + Valid SSL calibrated risk score."
+
+            # Override if VirusTotal confirms active malicious detections
+            if vt_res.get("status") == "ok" and vt_res.get("malicious", 0) >= 2:
+                hybrid_score = max(hybrid_score, 0.85)
+                calibrated_note = "Threat Intel Override: Multiple VirusTotal engines flagged this URL as malicious."
 
         st.markdown("---")
         # Verdict Banner
@@ -154,6 +172,9 @@ if st.button("Analyze Threat", type="primary"):
             st.warning(f"SUSPICIOUS — PROCEED WITH CAUTION (Threat Score: {hybrid_score * 100:.1f}%)")
         else:
             st.success(f"SAFE — BENIGN URL (Threat Score: {hybrid_score * 100:.1f}%)")
+
+        if calibrated_note:
+            st.caption(calibrated_note)
 
         # Metrics Row
         m1, m2, m3, m4 = st.columns(4)
