@@ -116,7 +116,7 @@ if st.button("Analyze Threat", type="primary"):
     if not target_url.strip():
         st.warning("Please enter a URL first.")
     else:
-        url_clean = target_url.strip()
+        url_clean = target_url.strip().rstrip("/")
         if not url_clean.startswith(("http://", "https://")):
             url_clean = "http://" + url_clean
 
